@@ -147,7 +147,7 @@ goal-round driver 每轮注入的 `<goal_round>` 提示词除 `Round: N/M` 外�
 三个工程约束：
 
 - **压缩排在暂停/取消之前**。pause 会被 goal-round-driver 转成 `agent.cancel({kind:"user"})`，turn 立即中止——压缩必须趁 turn 还活着跑完。
-- **同一 agent 的压缩串行**。压缩经常比冷却期（30s）更久，超预算后每步都可能再次触发；在飞时的新触发等它落定而不是叠加——压缩实现在摘要期做 surface 校验，并发必然失败一方。等待受 `compactTimeoutMs` 约束，到点继续后续处置，压缩本身仍在后台完成。
+- **同一 agent 的压缩串行**。压缩经常比冷却期（30s）更久，超预算后每步都可能再次触发；在飞时的新触发等它落定而不是叠加——压缩实现在摘要期做 surface 校验，并发必然失败一方。等待受 `compactTimeoutMs` 约束，到点继续后续处置，压缩仍在后台尝试落定（若处置中止了 turn，可能因 surface 变化失败并计入失败数）。
 - **恢复是默认行为**。`resumeGoal: true` 时，pause-goal 档在压缩完成后立即 `goals.resume`，驱动在 agent idle 时自动排下一轮——此时上下文已压缩。pause/resume 各推进一次 goal revision，被取消的旧 attempt 的 revision 对不上，驱动的僵尸 attempt 保护（idle 时发现 revision 不符才跳过、相符则再次暂停）不会误伤恢复。
 
 `action` 三档：
