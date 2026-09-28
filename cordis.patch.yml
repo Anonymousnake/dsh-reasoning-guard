@@ -3,7 +3,7 @@
 # 阈值依据实机扫描：正常会话每个 reasoning 块的咏唱行数为 0–3；出现退化的会话可达
 # 100–1400。默认值刻意留出很宽的余量，只有明确复读才会触发。
 #
-# action 可选 warn（默认，仅告警+压缩）/ pause-goal（暂停后自动恢复，自动化继续）/ cancel（硬手段，取消 turn 且不恢复）。
+# action 可选 pause-goal（默认：压缩→暂停退化轮→自动恢复，自动化继续）/ warn（仅告警+压缩，不打断）/ cancel（硬手段，取消 turn 且不恢复）。
 # intervene 需要 @deepseek-ai/dsh-llm；缺失时自动降级为不注入，不影响加载。
 - insert:
     - id: reasoning-guard
@@ -19,7 +19,7 @@
         maxTurnMinutes: 60
         cooldownMs: 30000
         compactTimeoutMs: 120000
-        action: warn
+        action: pause-goal
         autoCompact: true
         resumeGoal: true
         intervene: false
