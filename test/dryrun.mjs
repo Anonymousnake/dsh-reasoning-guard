@@ -191,7 +191,7 @@ results.push(['guard_status 可执行', true]);
 
 const output = await toolText;
 results.push(['状态含压缩计数', /压缩/.test(output)]);
-results.push(['默认 action 是 warn（不中断）', resolveConfig({}).action === 'warn']);
+results.push(['默认 action 是 pause-goal（压缩→暂停→恢复）', resolveConfig({}).action === 'pause-goal']);
 results.push(['状态展示压缩可用性', /自动压缩开/.test(output)]);
 results.push(['默认自动恢复 goal', resolveConfig({}).resumeGoal === true]);
 

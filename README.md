@@ -102,7 +102,7 @@ goal-round driver 每轮注入的 `<goal_round>` 提示词除 `Round: N/M` 外�
     maxTurnMinutes: 60       # 单 turn 时长预算（0 禁用）
     cooldownMs: 30000        # 两次触发的最小间隔
     compactTimeoutMs: 120000 # 等待压缩落定的上限（0 表示不限时）
-    action: warn             # warn | pause-goal | cancel（默认 warn）
+    action: pause-goal      # warn | pause-goal | cancel（默认 pause-goal）
     autoCompact: true        # 越线后自动压缩一次上下文
     resumeGoal: true         # pause-goal 档压缩后自动恢复，自动化继续
     intervene: false         # 是否在下一步注入收敛提醒
@@ -154,8 +154,8 @@ goal-round driver 每轮注入的 `<goal_round>` 提示词除 `Round: N/M` 外�
 
 | 值 | 行为 |
 |---|---|
-| `warn` | 只告警；`autoCompact` 开启时会额外触发一次压缩，不动 turn（默认） |
-| `pause-goal` | 暂停 active goal 切断退化轮的续命链，压缩完成后自动恢复，自动化继续 |
+| `pause-goal` | 暂停 active goal 切断退化轮的续命链，压缩完成后自动恢复，自动化继续（默认） |
+| `warn` | 只告警；`autoCompact` 开启时会额外触发一次压缩，不动 turn |
 | `cancel` | 再额外取消当前 turn 且**不**恢复 goal——显式选择的硬手段，会留下暂停态 |
 
 `intervene: true` 会在退化块之后的下一步注入一条收敛提醒（"停止复述意图，直接执行具体工具调用"）；预算触发（step/start 档）用的是 `budgetReminderText`，针对无限穷举而非复读。它需要 `@deepseek-ai/dsh-llm`；解析不到时静默降级为不注入，不影响插件加载。
