@@ -187,6 +187,21 @@ await new Promise((resolve) => setTimeout(resolve, 30));
 results.push(['在飞压缩落定后完成处置', pausedRef !== null && resumedRef !== null && compactCalls === callsInFlight]);
 compactMode = 'instant';
 
+// 8.6) /guard reset 保留在飞压缩的归属，落定后的计数计入新统计
+compactMode = 'hold';
+warns.length = 0;
+pausedRef = null;
+resumedRef = null;
+emit({ type: 'assistant/message', data: { turn: 70, step: 1, message: { content: [{ type: 'reasoning', text: degradedReasoning(80) }] } } });
+await new Promise((resolve) => setTimeout(resolve, 20));
+const resetRes = await registeredCommand.handler({ rawInput: 'reset' });
+results.push(['reset 保留在飞压缩归属', resetRes?.kind === 'success' && /在飞/.test(resetRes.text)]);
+for (const resolve of heldCompactions.splice(0)) resolve({ shadowedTokenCount: 9 });
+await new Promise((resolve) => setTimeout(resolve, 30));
+const postResetReport = String((await registeredTool.execute())?.text ?? '');
+results.push(['在飞压缩计数落定到新统计', postResetReport.includes(' 1/0 ')]);
+compactMode = 'instant';
+
 // 9) 工具与命令已注册
 results.push(['guard_status 已注册', registeredTool?.name === 'guard_status']);
 results.push(['/guard 命令已注册', commandNames.includes('guard')]);
