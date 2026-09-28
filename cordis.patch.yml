@@ -18,7 +18,7 @@
         maxStepsPerTurn: 60
         maxTurnMinutes: 60
         cooldownMs: 30000
-        action: pause-goal
+        action: warn
         autoCompact: true
         intervene: false
         verbose: false

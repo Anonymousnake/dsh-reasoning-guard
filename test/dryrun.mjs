@@ -6,7 +6,7 @@
  */
 
 import { apply } from '../lib/index.js';
-import { checkBudget, createGuardState } from '../lib/chant.js';
+import { checkBudget, createGuardState, resolveConfig } from '../lib/chant.js';
 
 const handlers = new Map();
 const warns = [];
@@ -57,7 +57,7 @@ const ctx = {
   },
 };
 
-apply(ctx, { cooldownMs: 0, maxStepsPerTurn: 5, maxTurnMinutes: 0, verbose: false });
+apply(ctx, { cooldownMs: 0, maxStepsPerTurn: 5, maxTurnMinutes: 0, action: 'pause-goal', verbose: false });
 
 function emit(event) {
   for (const handler of handlers.get('session/event') ?? []) handler(session, event);
@@ -93,6 +93,8 @@ warns.length = 0;
 pausedRef = null;
 emit({ type: 'assistant/message', data: { turn: 2, step: 1, message: { content: [{ type: 'reasoning', text: degradedReasoning(80) }] } } });
 results.push(['退化块触发告警', warns.some((w) => w.includes('思考咏唱退化'))]);
+// 处置链是 async（压缩先于暂停），等它跑完再断言暂停
+await new Promise((resolve) => setTimeout(resolve, 20));
 results.push(['退化块暂停 goal', pausedRef !== null && pausedRef.id === 'goal-1' && pausedRef.revision === 3]);
 
 // 3) 预警档：计数但不处置（模拟"每块末尾带一两句行动宣告"的正常偏高思考）
@@ -118,6 +120,7 @@ for (let s = 1; s <= 5; s++) emit({ type: 'step/start', data: { turn: 42, step: 
 results.push(['步数未超预算不处置', warns.length === 0 && pausedRef === null]);
 for (let s = 6; s <= 7; s++) emit({ type: 'step/start', data: { turn: 42, step: s } });
 results.push(['步数超预算触发处置', warns.some((w) => w.includes('单轮预算超支'))]);
+await new Promise((resolve) => setTimeout(resolve, 20));
 results.push(['预算超支也暂停 goal', pausedRef !== null]);
 
 // 7) checkBudget 纯函数：步数、时长、禁用三条路径
@@ -147,13 +150,16 @@ results.push(['/guard 命令已注册', commandNames.includes('guard')]);
 const toolText = registeredTool.execute().then((value) => String(value?.text ?? ''));
 results.push(['guard_status 可执行', true]);
 
+const output = await toolText;
+results.push(['状态含压缩计数', /压缩/.test(output)]);
+results.push(['默认 action 是 warn（不中断）', resolveConfig({}).action === 'warn']);
+results.push(['暂停前先压缩', /自动压缩/.test(output)]);
+
 let failed = 0;
 for (const [label, ok] of results) {
   if (!ok) failed++;
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}`);
 }
-
-const output = await toolText;
 console.log('\n--- guard_status 输出 ---');
 console.log(output);
 console.log(failed === 0 ? '\n全部通过' : `\n${failed} 项失败`);
