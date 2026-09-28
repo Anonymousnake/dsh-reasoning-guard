@@ -14,6 +14,7 @@ let compactSignal;
 let compactionEnabled = true;
 let registeredTool;
 let registeredCommand;
+let dispose;
 
 const ctx = {
   logger: { warn: (...args) => warnings.push(args.join(' ')) },
@@ -54,25 +55,14 @@ const ctx = {
     };
     if (name === 'commands') return { register: (command) => { registeredCommand = command; } };
   },
-  // compaction 与真实环境一致：声明 inject 后以属性访问（ctx.compaction），
-  // 不走 ctx.get —— 生产环境里 ctx.get('compaction') 拿不到该服务。
-  compaction: {
-    compactNow: () => {
-      compactCalls++;
-      compactStartedBeforePause = pausedRef === null;
-      if (compactMode === 'hold') {
-        return new Promise((resolve) => heldCompactions.push(resolve));
-      }
-      return Promise.resolve({ shadowedTokenCount: 1234 });
-    },
-  },
   tools: { register: (tool) => { registeredTool = tool; } },
   agents: { get: (id) => id === session.id ? agent : undefined },
   effect: (factory) => {
     const iterator = factory();
     let step = iterator.next();
+    dispose = step.value;
     while (!step.done) step = iterator.next();
-    return step.value;
+    return dispose;
   },
 };
 
@@ -158,4 +148,16 @@ checkBudget(budgetState, 2, 0, budgetCfg);
 assert.ok(checkBudget(budgetState, 2, 11 * 60000, budgetCfg));
 assert.equal(resolveConfig({}).action, 'pause-goal');
 assert.ok(warnings.some((line) => line.includes('思考咏唱退化')));
-console.log('PASS  preset 服务寻址、idle 压缩、合并、信号、超时、服务缺失、goal 恢复与统计重置');
+
+// Disposing the plugin aborts the active request and releases its paused goal.
+compactionEnabled = true;
+agent.phase = { kind: 'running' };
+agent.status = 'running';
+reasoning(degraded(80), 6);
+idle();
+dispose();
+assert.equal(compactSignal.aborted, true);
+pendingCompact(null);
+await drain();
+assert.equal(goal.phase, 'active');
+console.log('PASS  preset 服务寻址、idle 压缩、合并、信号、超时、服务缺失、停用清理与 goal 恢复');
