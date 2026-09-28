@@ -13,6 +13,7 @@ const warns = [];
 let pausedRef = null;
 let resumedRef = null;
 let registeredTool = null;
+let registeredCommand = null;
 const commandNames = [];
 let compactCalls = 0;
 let compactMode = 'instant';
@@ -45,7 +46,12 @@ const ctx = {
       };
     }
     if (service === 'commands') {
-      return { register: (spec) => commandNames.push(spec.name) };
+      return {
+        register: (spec) => {
+          commandNames.push(spec.name);
+          registeredCommand = spec;
+        },
+      };
     }
     if (service === 'compaction') {
       return {
@@ -194,6 +200,12 @@ results.push(['状态含压缩计数', /压缩/.test(output)]);
 results.push(['默认 action 是 pause-goal（压缩→暂停→恢复）', resolveConfig({}).action === 'pause-goal']);
 results.push(['状态展示压缩可用性', /自动压缩开/.test(output)]);
 results.push(['默认自动恢复 goal', resolveConfig({}).resumeGoal === true]);
+
+// 11) /guard 命令 handler 必须返回 CommandResult（{kind, text}），纯字符串会被注册表拒绝
+const guardResult = await registeredCommand.handler({ rawInput: '' });
+results.push(['/guard 返回 CommandResult', guardResult && guardResult.kind === 'success' && typeof guardResult.text === 'string']);
+const resetResult = await registeredCommand.handler({ rawInput: 'reset' });
+results.push(['/guard reset 返回 CommandResult', resetResult && resetResult.kind === 'success' && typeof resetResult.text === 'string']);
 
 let failed = 0;
 for (const [label, ok] of results) {
