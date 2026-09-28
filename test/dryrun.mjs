@@ -53,19 +53,19 @@ const ctx = {
         },
       };
     }
-    if (service === 'compaction') {
-      return {
-        compactNow: () => {
-          compactCalls++;
-          compactStartedBeforePause = pausedRef === null;
-          if (compactMode === 'hold') {
-            return new Promise((resolve) => heldCompactions.push(resolve));
-          }
-          return Promise.resolve({ shadowedTokenCount: 1234 });
-        },
-      };
-    }
     return undefined;
+  },
+  // compaction 与真实环境一致：声明 inject 后以属性访问（ctx.compaction），
+  // 不走 ctx.get —— 生产环境里 ctx.get('compaction') 拿不到该服务。
+  compaction: {
+    compactNow: () => {
+      compactCalls++;
+      compactStartedBeforePause = pausedRef === null;
+      if (compactMode === 'hold') {
+        return new Promise((resolve) => heldCompactions.push(resolve));
+      }
+      return Promise.resolve({ shadowedTokenCount: 1234 });
+    },
   },
   tools: { register: (tool) => { registeredTool = tool; } },
   agents: { get: (id) => (id === 'sess-1' ? agent : undefined) },
