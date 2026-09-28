@@ -1,0 +1,43 @@
+{
+  "name": "dsh-reasoning-guard",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness 思考咏唱护栏：检测 reasoning 退化成「好。/执行。/写。」式复读，越线后暂停 goal 或取消 turn。Reasoning-loop guard for dsh.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./chant": "./lib/chant.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "dsh-plugins",
+    "reasoning",
+    "guard",
+    "chant",
+    "loop-detection",
+    "deepseek-harness",
+    "agent",
+    "thinking"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dshTarget": "0.1.5-rc.1"
+}

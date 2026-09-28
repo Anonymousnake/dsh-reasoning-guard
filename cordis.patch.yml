@@ -1,0 +1,24 @@
+# dsh-reasoning-guard bundle patch：把护栏插件插进 profile 的层栈。
+#
+# 阈值依据实机扫描：正常会话每个 reasoning 块的咏唱行数为 0–3；出现退化的会话可达
+# 100–1400。默认值刻意留出很宽的余量，只有明确复读才会触发。
+#
+# action 可选 warn（仅告警）/ pause-goal（默认，切断 goal 续命链）/ cancel（一并取消 turn）。
+# intervene 需要 @deepseek-ai/dsh-llm；缺失时自动降级为不注入，不影响加载。
+- insert:
+    - id: reasoning-guard
+      name: 'dsh-reasoning-guard'
+      config:
+        enabled: true
+        elevatedBlockLimit: 20
+        perBlockLimit: 60
+        windowBlocks: 3
+        windowLimit: 120
+        turnLimit: 600
+        maxStepsPerTurn: 60
+        maxTurnMinutes: 60
+        cooldownMs: 30000
+        action: pause-goal
+        autoCompact: true
+        intervene: false
+        verbose: false
