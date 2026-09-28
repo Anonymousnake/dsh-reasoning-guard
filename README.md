@@ -146,16 +146,17 @@ goal-round driver 每轮注入的 `<goal_round>` 提示词除 `Round: N/M` 外�
 
 三个工程约束：
 
-- **压缩排在暂停/取消之前**。pause 会被 goal-round-driver 转成 `agent.cancel({kind:"user"})`，turn 立即中止——压缩必须趁 turn 还活着跑完。
-- **同一 agent 的压缩串行**。压缩经常比冷却期（30s）更久，超预算后每步都可能再次触发；在飞时的新触发等它落定而不是叠加——压缩实现在摘要期做 surface 校验，并发必然失败一方。等待受 `compactTimeoutMs` 约束，到点继续后续处置，压缩仍在后台尝试落定（若处置中止了 turn，可能因 surface 变化失败并计入失败数）。
-- **恢复是默认行为**。`resumeGoal: true` 时，pause-goal 档在压缩完成后立即 `goals.resume`，驱动在 agent idle 时自动排下一轮——此时上下文已压缩。pause/resume 各推进一次 goal revision，被取消的旧 attempt 的 revision 对不上，驱动的僵尸 attempt 保护（idle 时发现 revision 不符才跳过、相符则再次暂停）不会误伤恢复。
+- **压缩只能发生在 agent idle 时**。`compactNow` 内部的 `runMaintenance` 要求 agent 无活跃工作，turn 运行中调用必然抛 busy。护栏把压缩与恢复挂到 `agent/status` 的 idle 事件上：处置把退化轮掐断后 idle 必然到来（`warn` 档则等 turn 自然结束），压缩完成后再恢复，下一轮拿到的就是已压缩的上下文。
+- **同一 agent 的压缩串行**。压缩经常比冷却期（30s）更久，超预算后每步都可能再次触发；在飞时的新触发等它落定而不是叠加——压缩实现在摘要期做 surface 校验，并发必然失败一方。等待受 `compactTimeoutMs` 约束，到点继续后续处置（恢复），压缩仍在后台尝试落定（若新一轮已开始，可能因 surface 变化失败并计入失败数）。
+- **恢复是默认行为**。`resumeGoal: true` 时，pause-goal 档在压缩落定后立即 `goals.resume`，驱动在 agent idle 时自动排下一轮。pause/resume 各推进一次 goal revision，被取消的旧 attempt 的 revision 对不上，驱动的僵尸 attempt 保护（idle 时发现 revision 不符才跳过、相符则再次暂停）不会误伤恢复。
+- **服务访问要进 compaction 组**。compaction 服务不在宿主平面：dsh 用 `cordis:group` 条目把它圈在自己的隔离 realm 里（`isolate: { compaction: true }`），官方 `/compact` 命令正是该组的子条目。护栏的 bundle patch 以 `- id: compaction, insert:` 把自己插成组内子条目——顶层插件无论用 `ctx.get` 还是 `inject` 都拿不到这个服务（实测两种方式都失败）。
 
 `action` 三档：
 
 | 值 | 行为 |
 |---|---|
-| `pause-goal` | 暂停 active goal 切断退化轮的续命链，压缩完成后自动恢复，自动化继续（默认） |
-| `warn` | 只告警；`autoCompact` 开启时会额外触发一次压缩，不动 turn |
+| `pause-goal` | 暂停 active goal 切断退化轮的续命链，idle 后自动压缩，压缩落定后自动恢复，自动化继续（默认） |
+| `warn` | 只告警；`autoCompact` 开启时压缩推迟到 turn 自然结束后的 idle 时刻，不动 turn |
 | `cancel` | 再额外取消当前 turn 且**不**恢复 goal——显式选择的硬手段，会留下暂停态 |
 
 `intervene: true` 会在退化块之后的下一步注入一条收敛提醒（"停止复述意图，直接执行具体工具调用"）；预算触发（step/start 档）用的是 `budgetReminderText`，针对无限穷举而非复读。它需要 `@deepseek-ai/dsh-llm`；解析不到时静默降级为不注入，不影响插件加载。

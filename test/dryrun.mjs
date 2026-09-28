@@ -83,6 +83,10 @@ function emit(event) {
   for (const handler of handlers.get('session/event') ?? []) handler(session, event);
 }
 
+function emitStatus(status) {
+  for (const handler of handlers.get('agent/status') ?? []) handler({ agent, status });
+}
+
 /** 造一个退化块：整块几乎全是行动宣告。 */
 function degradedReasoning(count) {
   const words = ['好。', '执行。', '**GO！**', '写。', '（写）', 'OK.'];
@@ -108,19 +112,21 @@ pausedRef = null;
 emit({ type: 'assistant/message', data: { turn: 1, step: 1, message: { content: [{ type: 'reasoning', text: healthyReasoning }] } } });
 results.push(['正常 reasoning 不触发', warns.length === 0 && pausedRef === null]);
 
-// 2) 退化块应触发告警并暂停 goal
+// 2) 退化块应触发告警并暂停 goal；压缩与恢复发生在 idle 时刻
 warns.length = 0;
 pausedRef = null;
 resumedRef = null;
 compactStartedBeforePause = null;
 emit({ type: 'assistant/message', data: { turn: 2, step: 1, message: { content: [{ type: 'reasoning', text: degradedReasoning(80) }] } } });
 results.push(['退化块触发告警', warns.some((w) => w.includes('思考咏唱退化'))]);
-// 处置链是 async（压缩先于暂停），等它跑完再断言暂停
-await new Promise((resolve) => setTimeout(resolve, 20));
 results.push(['退化块暂停 goal', pausedRef !== null && pausedRef.id === 'goal-1' && pausedRef.revision === 3]);
-results.push(['压缩先于暂停', compactStartedBeforePause === true]);
+// compactNow 的 runMaintenance 要求 agent idle —— 运行中绝不调用
+results.push(['运行中不压缩（等 idle）', compactCalls === 0 && compactStartedBeforePause === null]);
+emitStatus('idle');
+await new Promise((resolve) => setTimeout(resolve, 20));
+results.push(['idle 时压缩', compactCalls === 1 && compactStartedBeforePause === false]);
 // resume 必须用暂停后的 revision（pause 已把 3 推进到 4）
-results.push(['暂停后自动恢复 goal', resumedRef !== null && resumedRef.revision === 4]);
+results.push(['压缩后自动恢复 goal', resumedRef !== null && resumedRef.revision === 4]);
 
 // 3) 预警档：计数但不处置（模拟"每块末尾带一两句行动宣告"的正常偏高思考）
 warns.length = 0;
@@ -146,8 +152,9 @@ for (let s = 1; s <= 5; s++) emit({ type: 'step/start', data: { turn: 42, step: 
 results.push(['步数未超预算不处置', warns.length === 0 && pausedRef === null]);
 for (let s = 6; s <= 7; s++) emit({ type: 'step/start', data: { turn: 42, step: s } });
 results.push(['步数超预算触发处置', warns.some((w) => w.includes('单轮预算超支'))]);
-await new Promise((resolve) => setTimeout(resolve, 20));
 results.push(['预算超支也暂停 goal', pausedRef !== null]);
+emitStatus('idle');
+await new Promise((resolve) => setTimeout(resolve, 20));
 results.push(['预算触发后也自动恢复', resumedRef !== null]);
 const budgetReport = String((await registeredTool.execute())?.text ?? '');
 results.push(['预算触发记入最近判决', budgetReport.includes('本 turn 步数')]);
@@ -167,7 +174,8 @@ const offCfg = { maxStepsPerTurn: 0, maxTurnMinutes: 0 };
 checkBudget(budgetState, 3, 0, offCfg);
 results.push(['预算可整体禁用', checkBudget(budgetState, 3, 0, offCfg) === null]);
 
-// 8) 越线后自动压缩（异步 fire-and-forget）
+// 8) 越线后自动压缩（idle 触发，异步落定）
+emitStatus('idle');
 await new Promise((resolve) => setTimeout(resolve, 30));
 results.push(['越线后自动压缩', compactCalls > 0]);
 
@@ -177,14 +185,16 @@ warns.length = 0;
 pausedRef = null;
 resumedRef = null;
 emit({ type: 'assistant/message', data: { turn: 60, step: 1, message: { content: [{ type: 'reasoning', text: degradedReasoning(80) }] } } });
+emitStatus('idle');
 await new Promise((resolve) => setTimeout(resolve, 20));
 const callsInFlight = compactCalls;
 emit({ type: 'assistant/message', data: { turn: 60, step: 2, message: { content: [{ type: 'reasoning', text: degradedReasoning(80) }] } } });
+emitStatus('idle');
 await new Promise((resolve) => setTimeout(resolve, 20));
-results.push(['压缩在飞时不叠加', compactCalls === callsInFlight && pausedRef === null]);
+results.push(['压缩在飞时不叠加', compactCalls === callsInFlight && pausedRef !== null]);
 for (const resolve of heldCompactions.splice(0)) resolve({ shadowedTokenCount: 7 });
 await new Promise((resolve) => setTimeout(resolve, 30));
-results.push(['在飞压缩落定后完成处置', pausedRef !== null && resumedRef !== null && compactCalls === callsInFlight]);
+results.push(['在飞压缩落定后完成恢复', resumedRef !== null && compactCalls === callsInFlight]);
 compactMode = 'instant';
 
 // 8.6) /guard reset 保留在飞压缩的归属，落定后的计数计入新统计
@@ -193,6 +203,7 @@ warns.length = 0;
 pausedRef = null;
 resumedRef = null;
 emit({ type: 'assistant/message', data: { turn: 70, step: 1, message: { content: [{ type: 'reasoning', text: degradedReasoning(80) }] } } });
+emitStatus('idle');
 await new Promise((resolve) => setTimeout(resolve, 20));
 const resetRes = await registeredCommand.handler({ rawInput: 'reset' });
 results.push(['reset 保留在飞压缩归属', resetRes?.kind === 'success' && /在飞/.test(resetRes.text)]);
