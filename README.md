@@ -93,14 +93,19 @@ goal-round driver 每轮注入的 `<goal_round>` 提示词除 `Round: N/M` 外�
 - id: reasoning-guard
   config:
     enabled: true
-    elevatedBlockLimit: 20 # 预警档：只计数，不处置
-    perBlockLimit: 60      # 单个 reasoning 块的咏唱行数上限
-    windowBlocks: 3        # 滑动窗口长度（块）
-    windowLimit: 120       # 窗口内累计咏唱行数上限
-    turnLimit: 600         # 单个 turn 累计上限
-    cooldownMs: 30000      # 两次触发的最小间隔
-    action: pause-goal     # warn | pause-goal | cancel
-    intervene: false       # 是否在下一步注入收敛提醒
+    elevatedBlockLimit: 20   # 预警档：只计数，不处置
+    perBlockLimit: 60        # 单个 reasoning 块的咏唱行数上限
+    windowBlocks: 3          # 滑动窗口长度（块）
+    windowLimit: 120         # 窗口内累计咏唱行数上限
+    turnLimit: 600           # 单个 turn 累计上限
+    maxStepsPerTurn: 60      # 单 turn 步数预算（0 禁用）
+    maxTurnMinutes: 60       # 单 turn 时长预算（0 禁用）
+    cooldownMs: 30000        # 两次触发的最小间隔
+    compactTimeoutMs: 120000 # 等待压缩落定的上限（0 表示不限时）
+    action: warn             # warn | pause-goal | cancel（默认 warn）
+    autoCompact: true        # 越线后自动压缩一次上下文
+    resumeGoal: true         # pause-goal 档压缩后自动恢复，自动化继续
+    intervene: false         # 是否在下一步注入收敛提醒
     verbose: false
 ```
 
@@ -139,15 +144,21 @@ goal-round driver 每轮注入的 `<goal_round>` 提示词除 `Round: N/M` 外�
 
 样本只有 2 个，不足以断言它对所有退化都有效；但两次都是数量级的改善，且机制清楚，因此默认开启。压缩需要 `ctx.compaction` 服务，缺失或返回 `null`（无可安全压缩范围）时静默跳过，不影响其它处置。压缩本身要调一次模型生成摘要，所以是异步 fire-and-forget，不阻塞事件处理。
 
+三个工程约束：
+
+- **压缩排在暂停/取消之前**。pause 会被 goal-round-driver 转成 `agent.cancel({kind:"user"})`，turn 立即中止——压缩必须趁 turn 还活着跑完。
+- **同一 agent 的压缩串行**。压缩经常比冷却期（30s）更久，超预算后每步都可能再次触发；在飞时的新触发等它落定而不是叠加——压缩实现在摘要期做 surface 校验，并发必然失败一方。等待受 `compactTimeoutMs` 约束，到点继续后续处置，压缩本身仍在后台完成。
+- **恢复是默认行为**。`resumeGoal: true` 时，pause-goal 档在压缩完成后立即 `goals.resume`，驱动在 agent idle 时自动排下一轮——此时上下文已压缩。pause/resume 各推进一次 goal revision，被取消的旧 attempt 的 revision 对不上，驱动的僵尸 attempt 保护（idle 时发现 revision 不符才跳过、相符则再次暂停）不会误伤恢复。
+
 `action` 三档：
 
 | 值 | 行为 |
 |---|---|
-| `warn` | 只写日志，不动会话 |
-| `pause-goal` | 额外暂停 active goal，切断 goal driver 的续命链（默认） |
-| `cancel` | 再额外取消当前 turn |
+| `warn` | 只告警；`autoCompact` 开启时会额外触发一次压缩，不动 turn（默认） |
+| `pause-goal` | 暂停 active goal 切断退化轮的续命链，压缩完成后自动恢复，自动化继续 |
+| `cancel` | 再额外取消当前 turn 且**不**恢复 goal——显式选择的硬手段，会留下暂停态 |
 
-`intervene: true` 会在退化块之后的下一步注入一条收敛提醒（"停止复述意图，直接执行具体工具调用"）。它需要 `@deepseek-ai/dsh-llm`；解析不到时静默降级为不注入，不影响插件加载。
+`intervene: true` 会在退化块之后的下一步注入一条收敛提醒（"停止复述意图，直接执行具体工具调用"）；预算触发（step/start 档）用的是 `budgetReminderText`，针对无限穷举而非复读。它需要 `@deepseek-ai/dsh-llm`；解析不到时静默降级为不注入，不影响插件加载。
 
 ## 使用
 
@@ -158,6 +169,9 @@ goal-round driver 每轮注入的 `<goal_round>` 提示词除 `Round: N/M` 外�
 ## 验证
 
 ```bash
+# 空跑事件链路：mock ctx 驱动 apply，验证触发/处置/压缩/恢复，无需本地会话数据
+node test/dryrun.mjs
+
 # 回放全部历史会话，检查触发与误报
 node test/verify.mjs
 
