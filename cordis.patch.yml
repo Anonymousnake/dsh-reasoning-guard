@@ -1,11 +1,18 @@
 # dsh-reasoning-guard bundle patch：把护栏插件插进 profile 的层栈。
 #
+# 条目必须插进 compaction 组（id: compaction）：compaction 服务在组的隔离
+# realm 内（isolate: { compaction: true }），顶层条目拿不到它 —— 官方 /compact
+# 命令正是作为该组的子条目才得以访问。压缩只能发生在 agent idle 时，护栏把
+# 压缩与恢复挂在 idle 事件上：暂停退化轮 → idle → 压缩 → 自动恢复。
+#
 # 阈值依据实机扫描：正常会话每个 reasoning 块的咏唱行数为 0–3；出现退化的会话可达
 # 100–1400。默认值刻意留出很宽的余量，只有明确复读才会触发。
 #
-# action 可选 pause-goal（默认：压缩→暂停退化轮→自动恢复，自动化继续）/ warn（仅告警+压缩，不打断）/ cancel（硬手段，取消 turn 且不恢复）。
+# action 可选 pause-goal（默认：暂停退化轮 → idle 压缩 → 自动恢复，自动化继续）/
+# warn（仅告警，压缩推迟到 turn 自然结束）/ cancel（硬手段，取消 turn 且不恢复）。
 # intervene 需要 @deepseek-ai/dsh-llm；缺失时自动降级为不注入，不影响加载。
-- insert:
+- id: compaction
+  insert:
     - id: reasoning-guard
       name: 'dsh-reasoning-guard'
       config:
