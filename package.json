@@ -1,6 +1,6 @@
 {
   "name": "dsh-reasoning-guard",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "DeepSeek Harness 思考咏唱护栏：检测 reasoning 退化成「好。/执行。/写。」式复读，越线后暂停 goal 或取消 turn。Reasoning-loop guard for dsh.",
   "type": "module",
   "main": "lib/index.js",
