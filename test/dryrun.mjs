@@ -3,7 +3,7 @@ import { apply } from '../lib/index.js';
 import { checkBudget, createGuardState, resolveConfig } from '../lib/chant.js';
 
 const session = { id: 'sess-1' };
-const agent = { id: 'agent-1', session, status: 'running', phase: { kind: 'running' } };
+const agent = { id: session.id, session, status: 'running', phase: { kind: 'running' }, cancel() {} };
 const handlers = new Map();
 const order = [];
 const warnings = [];
@@ -85,12 +85,12 @@ const reasoning = (text, turn) => emit({ type: 'assistant/message', data: {
   turn, message: { content: [{ type: 'reasoning', text }] },
 } });
 
-reasoning('先核对调用顺序及阈值，再确认状态。\n好。', 1);
+reasoning('先核对调用顺序及阈值，再确认状态。\n好。', 1); await drain();
 assert.equal(order.length, 0);
-reasoning(degraded(80), 2);
+reasoning(degraded(80), 2); await drain();
 assert.deepEqual(order, ['pause']);
 assert.equal(compactCount, 0);
-reasoning(degraded(80), 2);
+reasoning(degraded(80), 2); await drain();
 assert.equal(goal.revision, 4); // pending requests coalesce
 idle();
 assert.deepEqual(order, ['pause', 'compact']);
@@ -108,7 +108,7 @@ assert.match((await registeredCommand.handler({ rawInput: '' })).text, /自动�
 // A second triggered turn tests no-op compaction and reset while maintenance runs.
 agent.phase = { kind: 'running' };
 agent.status = 'running';
-reasoning(degraded(80), 3);
+reasoning(degraded(80), 3); await drain();
 idle();
 const reset = await registeredCommand.handler({ rawInput: 'reset' });
 assert.match(reset.text, /在飞/);
@@ -120,7 +120,7 @@ assert.match((await registeredTool.execute()).text, /0\/1/);
 // A stalled backend must release the goal at the timeout; a late result is ignored.
 agent.phase = { kind: 'running' };
 agent.status = 'running';
-reasoning(degraded(80), 4);
+reasoning(degraded(80), 4); await drain();
 idle();
 await new Promise((resolve) => setTimeout(resolve, 40));
 assert.equal(compactSignal.aborted, true);
@@ -134,7 +134,8 @@ assert.ok(warnings.some((line) => line.includes('自动压缩超时')));
 compactionEnabled = false;
 agent.phase = { kind: 'running' };
 agent.status = 'running';
-reasoning(degraded(80), 5);
+reasoning(degraded(80), 5); await drain();
+idle();
 assert.equal(goal.phase, 'active');
 assert.equal(compactCount, 3);
 assert.match((await registeredTool.execute()).text, /0\/3/);
@@ -153,7 +154,7 @@ assert.ok(warnings.some((line) => line.includes('思考咏唱退化')));
 compactionEnabled = true;
 agent.phase = { kind: 'running' };
 agent.status = 'running';
-reasoning(degraded(80), 6);
+reasoning(degraded(80), 6); await drain();
 idle();
 dispose();
 assert.equal(compactSignal.aborted, true);

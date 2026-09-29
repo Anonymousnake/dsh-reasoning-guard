@@ -1,6 +1,6 @@
 {
   "name": "dsh-reasoning-guard",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "DeepSeek Harness 思考咏唱护栏：检测 reasoning 退化成「好。/执行。/写。」式复读，越线后暂停 goal 或取消 turn。Reasoning-loop guard for dsh.",
   "type": "module",
   "main": "lib/index.js",
@@ -39,5 +39,17 @@
   "engines": {
     "node": ">=18"
   },
-  "dshTarget": "0.1.5-rc.1"
+  "dshTarget": "0.1.5-rc.2",
+  "scripts": {
+    "test": "node --test test/chant.test.mjs test/runtime.test.mjs && node test/dryrun.mjs"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-agent": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-goal": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-goal-round-driver": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-llm": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-session": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-session-projection": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-system-prompt": "0.1.5-rc.2"
+  }
 }

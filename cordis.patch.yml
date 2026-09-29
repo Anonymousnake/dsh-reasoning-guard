@@ -3,12 +3,11 @@
 # 插入 host 层；preset 的隔离 compaction 服务通过 agentPresets.serviceFor
 # 按 agent 寻址。host 装配树没有 id: compaction 的分组。
 #
-# 阈值依据实机扫描：正常会话每个 reasoning 块的咏唱行数为 0–3；出现退化的会话可达
-# 100–1400。默认值刻意留出很宽的余量，只有明确复读才会触发。
+# 按句号/换行等分隔的短句计数；数量阈值结合占比或连续长度判定。
 #
 # action 可选 pause-goal（默认：暂停退化轮 → idle 压缩 → 自动恢复，自动化继续）/
 # warn（仅告警，压缩推迟到 turn 自然结束）/ cancel（硬手段，取消 turn 且不恢复）。
-# intervene 需要 @deepseek-ai/dsh-llm；缺失时自动降级为不注入，不影响加载。
+# intervene 优先使用 @deepseek-ai/dsh-llm，缺失时使用本地消息结构。
 - insert:
     - id: reasoning-guard
       name: 'dsh-reasoning-guard'
@@ -19,6 +18,8 @@
         windowBlocks: 3
         windowLimit: 120
         turnLimit: 600
+        minChantRatio: 0.5
+        repeatedRunLimit: 30
         maxStepsPerTurn: 60
         maxTurnMinutes: 60
         cooldownMs: 30000

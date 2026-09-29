@@ -8,10 +8,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import { isChantLine, normalizeChantLine } from '../lib/chant.js';
+import { isChantLine, normalizeChantLine, analyzeReasoningText } from '../lib/chant.js';
 
 const SESSION_ROOT = path.join(process.env.USERPROFILE ?? process.env.HOME ?? '.', '.dsh', 'sessions');
 const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
+if (typeof zlib.zstdDecompressSync !== 'function') throw new Error('请使用支持 Zstandard 的 Node 24 运行审计。');
 
 function walk(dir, out = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -64,14 +65,16 @@ const hits = new Map();
 const cores = new Map();
 let total = 0;
 let matched = 0;
+let maxRepeatRun = 0;
 
 for (const ev of decode(file)) {
   if (ev.type !== 'assistant/message') continue;
   for (const block of ev.data?.message?.content ?? []) {
     if (block?.type !== 'reasoning') continue;
-    for (const raw of (block.text ?? '').split('\n')) {
+    maxRepeatRun = Math.max(maxRepeatRun, analyzeReasoningText(block.text).maxRepeatRun);
+    for (const raw of (block.text ?? '').split(/[。！？!?；;.\n]/)) {
       const line = raw.trim();
-      if (!line) continue;
+      if (!normalizeChantLine(line)) continue;
       total++;
       if (!isChantLine(line)) continue;
       matched++;
@@ -83,7 +86,7 @@ for (const ev of decode(file)) {
 }
 
 console.log(`会话 ${path.basename(path.dirname(file))}`);
-console.log(`非空行 ${total}，判定为咏唱 ${matched} 行（${((matched / total) * 100).toFixed(1)}%）\n`);
+console.log(`非空短句 ${total}，词表匹配 ${matched} 句（${(total ? (matched / total) * 100 : 0).toFixed(1)}%），同句最长连续重复 ${maxRepeatRun} 次\n`);
 
 console.log('== 原始行 top 30 ==');
 for (const [line, count] of [...hits].sort((a, b) => b[1] - a[1]).slice(0, 30)) {
