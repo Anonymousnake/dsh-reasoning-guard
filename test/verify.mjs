@@ -1,6 +1,6 @@
 /**
  * 回放验证：用 ~/.dsh/sessions 下的真实会话喂给 chant.js，
- * 确认退化会话必定触发、正常会话零误报。
+ * 观察规则触发情况；没有人工标签，不能由此推断误报率或漏报率。
  *
  * 用法：node test/verify.mjs [会话路径片段]
  */
@@ -18,6 +18,9 @@ import {
 
 const SESSION_ROOT = path.join(process.env.USERPROFILE ?? process.env.HOME ?? '.', '.dsh', 'sessions');
 const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
+if (typeof zlib.zstdDecompressSync !== 'function') {
+  throw new Error('当前 Node 不支持 Zstandard 解压，请使用 Node 24 运行历史回放。');
+}
 
 function walk(dir, out = []) {
   let entries;
@@ -84,7 +87,7 @@ function replay(file, cfg) {
     const content = ev.data?.message?.content;
     if (!Array.isArray(content)) continue;
     let text = '';
-    for (const block of content) if (block?.type === 'reasoning') text += block.text ?? '';
+    for (const block of content) if (block?.type === 'reasoning') text += (block.text ?? '') + '\n';
     if (!text) continue;
 
     const stats = analyzeReasoningText(text);
@@ -113,12 +116,13 @@ if (!files.length) {
 }
 
 const rows = files.map((file) => ({ file, ...replay(file, cfg) })).filter((r) => r.blocks > 0);
+if (!rows.length) throw new Error('没有成功解码的 reasoning，无法评估检测结果。');
 rows.sort((a, b) => b.density - a.density);
 
 const LIMIT = cfg.perBlockLimit;
-console.log(`阈值：单块 ≥ ${LIMIT} 行 | ${cfg.windowBlocks} 块累计 ≥ ${cfg.windowLimit} | 单 turn ≥ ${cfg.turnLimit}`);
+console.log(`阈值：单块 ≥ ${LIMIT} 句 | ${cfg.windowBlocks} 块累计 ≥ ${cfg.windowLimit} | 单 turn ≥ ${cfg.turnLimit} | 占比 ≥ ${cfg.minChantRatio} | 连续同句 ≥ ${cfg.repeatedRunLimit}`);
 console.log(`（验证时冷却置 0，只看判定；实机默认冷却 ${cfg.cooldownMs}ms）\n`);
-console.log('触发  密度   块数   咏唱行   峰值块  session');
+console.log('触发  密度   块数   咏唱句   峰值块  session');
 for (const r of rows) {
   const name = path.basename(path.dirname(r.file)).slice(0, 34);
   console.log(
@@ -128,13 +132,13 @@ for (const r of rows) {
 
 const degraded = rows.filter((r) => r.fired > 0);
 const clean = rows.filter((r) => r.fired === 0);
-console.log(`\n会话总数 ${rows.length}：判定退化 ${degraded.length} 个，未触发 ${clean.length} 个。`);
+console.log(`\n会话总数 ${rows.length}：规则触发 ${degraded.length} 个，未触发 ${clean.length} 个（未经人工标注）。`);
 
 const maxCleanPeak = clean.reduce((a, r) => Math.max(a, r.peak), 0);
-console.log(`未触发会话的最大单块咏唱行数 = ${maxCleanPeak}（阈值 ${LIMIT}，余量 ${LIMIT - maxCleanPeak} 行）`);
+console.log(`未触发会话的最大单块咏唱句数 = ${maxCleanPeak}（阈值 ${LIMIT}，余量 ${LIMIT - maxCleanPeak} 句）`);
 
 if (degraded.length) {
-  console.log('\n退化的会话首批触发点：');
+  console.log('\n规则触发的会话首批触发点：');
   for (const r of degraded.slice(0, 5)) {
     console.log(`  ${path.basename(path.dirname(r.file)).slice(0, 30)}`);
     for (const f of r.firstFires) console.log(`      ${f}`);
