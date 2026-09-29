@@ -1,25 +1,58 @@
-# dsh-reasoning-guard
+# 思考监控 / Reasoning Monitor
 
 DeepSeek Harness 插件：监测 reasoning 中重复的短句，以及单轮步数或时长超预算的情况。触发时记录告警；可选择压缩上下文、暂停并恢复 goal，或取消当前轮次。
 
+包名与仓库名：**`dsh-reasoning-monitor`**。原名 `dsh-reasoning-guard`，从 0.5.0 起统一使用新名称。
+
+## 界面
+
+- **设置 → 思考监控**：查看状态、运行会话数、触发次数和压缩结果；修改启用开关、处置方式、自动压缩和恢复策略。重复检测、步数和时间阈值集中在可折叠的“高级设置”。
+- **会话输入框上方**：常驻一行当前会话的状态；展开可查看最近块最长连续重复、已观察到的本轮步数与用时，以及最近处置的触发依据和结果。
+- 区分监测中、等待本轮结束、压缩中、已恢复、处置异常、已关闭和连接中断。压缩失败但目标已恢复时，会分别显示两个结果。
+- 界面随 dsh 的中英文语言和明暗主题切换。多个入口共用一个状态请求，每 2 秒刷新一次；页面隐藏或没有入口挂载时停止轮询。
+
+界面主要面向桌面 Web。dsh 当前的设置弹窗在很窄的屏幕上可能裁切；插件控件支持换行，但不改写宿主弹窗布局。
+
+设置通过 dsh 的 `reasoning-monitor` 命名空间保存，使用原生配置 API 的逐字段更新与版本冲突检查。保存失败或只读连接会明确提示，不显示假成功。Web 状态读取目前仅支持本机连接；不支持的远程连接会显示错误。
+
+处置记录保留在本次插件运行的内存中，每个 agent 最多 5 条，设置页展示最近 10 条。重启或 agent 卸载会清除记录；接口不返回思考原文。统计从插件接收到的新事件开始，不回放历史会话。
+
 ## 安装
 
-适配并通过 dsh `0.1.5-rc.2` 组件集成测试。在 profile 的 `package.json` 中加入本地依赖和 bundle：
+要求 Node.js 22+；适配 dsh `0.1.5-rc.2` 组件。先克隆仓库并安装运行依赖：
+
+```sh
+git clone https://github.com/Anonymousnake/dsh-reasoning-monitor.git
+cd dsh-reasoning-monitor
+npm ci --omit=dev --ignore-scripts
+```
+
+在 profile 的 `package.json` 中加入本地依赖和 bundle：
 
 ```json
 {
   "dependencies": {
-    "dsh-reasoning-guard": "link:C:/path/to/dsh-reasoning-guard"
+    "dsh-reasoning-monitor": "link:C:/path/to/dsh-reasoning-monitor"
   },
   "dsh": {
     "profile": {
-      "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-reasoning-guard"]
+      "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-reasoning-monitor"]
     }
   }
 }
 ```
 
-保留 profile 已有的其他 bundle；上述数组只展示本插件的位置。运行 `pnpm install`，然后重启 dsh。插件 bundle 的 `cordis.patch.yml` 会注册 host 层护栏，无须修改内置 preset。
+保留 profile 已有的其他 bundle；上述数组只展示本插件的位置。运行 `pnpm install`，然后重启 dsh。插件 bundle 的 `cordis.patch.yml` 会注册 host 层监控，无须修改内置 preset。
+
+Web 客户端通过包的 `dsh.client` 声明加载。无 Web 界面的 profile 仍可使用检测和命令；没有 settings 服务时使用插件入口配置。
+
+## 从旧名称升级
+
+1. 将 profile 的依赖键和 bundle 名从 `dsh-reasoning-guard` 改为 `dsh-reasoning-monitor`，链接到更新后的本地目录；不要同时加载两份插件。
+2. 执行 `pnpm install`，重启 dsh 并刷新浏览器。
+3. 推荐改用 `/monitor status`、`/monitor reset` 和工具 `reasoning_monitor_status`。旧的 `/guard` 和 `guard_status` 继续可用。
+
+为兼容已有的 profile 配置覆盖，Cordis 行 ID **`reasoning-guard` 保持不变**；它是兼容标识，不是显示名称。公开的 `./chant` 导出和计数字段 `lines` / `chantLines` 同样保留，计数单位仍为短句。
 
 ## 工作方式
 
@@ -32,7 +65,9 @@ DeepSeek Harness 插件：监测 reasoning 中重复的短句，以及单轮步�
 
 ## 配置
 
-插件自带配置见 `cordis.patch.yml`，可在 profile 的 `cordis.patch.yml` 中覆盖：
+推荐通过设置页修改。解析优先级为：内置默认值 → profile 的插件入口配置 → dsh settings 中的用户配置。后者持久化并实时生效；删除相应用户配置字段后重新继承入口配置。
+
+插件自带配置见 `cordis.patch.yml`，可在 profile 的 `cordis.patch.yml` 中覆盖（行 ID 为兼容旧配置保留）：
 
 ```yaml
 - id: reasoning-guard
@@ -64,13 +99,15 @@ DeepSeek Harness 插件：监测 reasoning 中重复的短句，以及单轮步�
 
 没有 active goal 时，`pause-goal` 不会主动取消当前轮次；若启用压缩，它等待自然到达 idle。`resumeGoal: false` 会让 `pause-goal` 的暂停状态保持不变。`intervene` 使用可选的 `@deepseek-ai/dsh-llm` 消息工厂，缺失时使用本地消息结构。
 
+关闭监控会停止新检测和预算计时器，也会撤销尚未开始的处置。已经开始的处置按触发时的压缩超时及恢复策略收尾，避免更改开关或恢复设置后遗留被暂停的目标。重新启用无需重载插件；运行中的预算会重新按新配置计时检查。
+
 ## 查看与验证
 
-`/guard status` 或模型工具 `guard_status` 展示实时阈值、触发数、压缩成功/失败数和最近判决；`/guard reset` 清空统计，但保留当前 turn 的预算和待执行的压缩/恢复。尚未观察到 agent 时，压缩可用性显示“等待 agent”。0.4.0 的计数单位是短句，旧 API 字段 `lines` / `chantLines` 为兼容保留命名。
+`/monitor status` 或模型工具 `reasoning_monitor_status` 展示实时阈值、触发数、压缩成功/失败数和最近判决；`/monitor reset` 清空统计与已结束的处置记录，但保留当前 turn 的预算和待执行的压缩/恢复。尚未观察到 agent 时，压缩可用性显示“等待 agent”。
 
 ```sh
 npm ci --ignore-scripts       # 开发测试依赖，Node 24
-npm test                     # 反例、真实 dsh 组件集成和压缩生命周期测试
+npm test                     # 检测、恢复、动态配置、真实 settings 与本机状态接口测试
 node test/dryrun.mjs            # 模拟事件、隔离服务、idle 压缩和 goal 恢复
 node test/verify.mjs            # 回放本机历史会话（需要会话数据）
 node test/audit.mjs <会话片段>  # 检查一个会话中匹配的短句
@@ -78,7 +115,7 @@ node test/audit.mjs <会话片段>  # 检查一个会话中匹配的短句
 
 `verify.mjs` 依赖当前 Node 的 Zstandard 解压能力；它只读 `~/.dsh/sessions`，回放已落盘 reasoning，冷却置零，不执行处置，也不模拟实时流和时长预算。其“触发/未触发”是规则输出，未经人工标注，不能用来声称零误报或零漏报。判定不代表对 reasoning 内容质量的通用评估。
 
-`ci/github-actions-test.yml` 是 Ubuntu/Windows 的 GitHub Actions 模板，当前不自动运行。有工作流写入权限时，可将它放到 `.github/workflows/test.yml` 启用；本次提交凭据缺少 `workflow` 权限。
+`ci/github-actions-test.yml` 是 Ubuntu/Windows 的 GitHub Actions 模板，当前不自动运行。有工作流写入权限时，可将它放到 `.github/workflows/test.yml` 启用。
 
 ## 许可
 

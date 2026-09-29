@@ -1,13 +1,15 @@
 {
-  "name": "dsh-reasoning-guard",
-  "version": "0.4.0",
-  "description": "DeepSeek Harness 思考咏唱护栏：检测 reasoning 退化成「好。/执行。/写。」式复读，越线后暂停 goal 或取消 turn。Reasoning-loop guard for dsh.",
+  "name": "dsh-reasoning-monitor",
+  "version": "0.5.0",
+  "description": "思考监控 / Reasoning Monitor for DeepSeek Harness: live repetition detection, turn budgets, recovery, and Web settings.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
     "./chant": "./lib/chant.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml"
   },
   "files": [
     "lib",
@@ -19,10 +21,8 @@
   "keywords": [
     "dsh",
     "dsh-plugin",
-    "dsh-plugins",
     "reasoning",
-    "guard",
-    "chant",
+    "monitor",
     "loop-detection",
     "deepseek-harness",
     "agent",
@@ -31,17 +31,21 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1"
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/schemastery": "^3.18.4"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "dshTarget": "0.1.5-rc.2",
   "scripts": {
-    "test": "node --test test/chant.test.mjs test/runtime.test.mjs && node test/dryrun.mjs"
+    "test": "node --test test/chant.test.mjs test/runtime.test.mjs test/settings.test.mjs && node test/dryrun.mjs"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-agent": "0.1.5-rc.2",
@@ -50,6 +54,33 @@
     "@deepseek-ai/dsh-llm": "0.1.5-rc.2",
     "@deepseek-ai/dsh-session": "0.1.5-rc.2",
     "@deepseek-ai/dsh-session-projection": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-settings": "0.1.5-rc.2",
     "@deepseek-ai/dsh-system-prompt": "0.1.5-rc.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Anonymousnake/dsh-reasoning-monitor.git"
+  },
+  "homepage": "https://github.com/Anonymousnake/dsh-reasoning-monitor#readme",
+  "bugs": {
+    "url": "https://github.com/Anonymousnake/dsh-reasoning-monitor/issues"
+  },
+  "dshhub": {
+    "schemaVersion": 1,
+    "displayName": "思考监控 / Reasoning Monitor",
+    "summary": "实时监测思考复读和单轮预算，提供自动压缩、目标恢复、设置页与会话状态入口。",
+    "categories": [
+      "工具",
+      "Web UI"
+    ],
+    "surfaces": [
+      "host",
+      "web"
+    ],
+    "compatibility": {
+      "dsh": ">=0.1.5-rc.2",
+      "node": ">=22"
+    },
+    "permissions": {}
   }
 }

@@ -70,7 +70,7 @@ function decode(file) {
     .filter(Boolean);
 }
 
-/** 用护栏自身的配置与状态机重放一个会话，冻结时间以便观察触发。 */
+/** 用监控自身的配置与状态机重放一个会话，冻结时间以便观察触发。 */
 function replay(file, cfg) {
   const state = createGuardState();
   let blocks = 0;

@@ -17,6 +17,8 @@ let registeredCommand;
 let dispose;
 
 const ctx = {
+  provide() {},
+  inject() {}, // Optional settings and Web services are absent in this fixture.
   logger: { warn: (...args) => warnings.push(args.join(' ')) },
   on: (name, fn) => {
     if (!handlers.has(name)) handlers.set(name, []);

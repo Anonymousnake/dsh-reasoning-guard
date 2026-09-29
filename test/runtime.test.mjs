@@ -15,8 +15,9 @@ async function fixture(t, config = {}, { compact, goal = true } = {}) {
   const ctx = new Context();
   t.after(() => ctx.fiber.dispose());
   let statusTool, command;
-  ctx.provide('tools', { register(tool) { statusTool = tool; } });
-  ctx.provide('commands', { register(value) { command = value; } });
+  const tools = new Map(), commands = new Map();
+  ctx.provide('tools', { register(tool) { statusTool = tool; tools.set(tool.name, tool); } });
+  ctx.provide('commands', { register(value) { command = value; commands.set(value.name, value); } });
   if (compact) ctx.provide('agentPresets', { serviceFor: () => ({ compactNow: compact }) });
   ctx.plugin(AgentRegistry);
   ctx.plugin(SessionStore);
@@ -63,7 +64,8 @@ async function fixture(t, config = {}, { compact, goal = true } = {}) {
       source: { provider: 'fixture', model: 'fixture' } }), stream: stream.snapshot() }, { surfaceOp: 'append' });
   };
   return { ctx, agents, goals, session, agent, append, emit, idle, settle, cancellations, report,
-    reset: () => command.handler({ rawInput: 'reset' }), guardFiber };
+    reset: () => command.handler({ rawInput: 'reset' }), guardFiber, tools, commands,
+    monitor: ctx.get('reasoningMonitor') };
 }
 
 test('real session publication defers goal writes and explicitly cancels its own initiator', async (t) => {
@@ -202,4 +204,92 @@ test('warn, cancel and resumeGoal=false retain their documented action semantics
     f.idle();
     assert.equal(f.goals.get(f.agent).phase, config.action === 'warn' ? 'active' : 'paused');
   }
+});
+
+test('a disabled plugin remains observable and can be enabled without reloading', async (t) => {
+  const f = await fixture(t, { enabled: false });
+  f.settle('好。'.repeat(80));
+  await drain();
+  assert.equal(f.cancellations.length, 0);
+  assert.equal(f.monitor.getSnapshot().config.enabled, false);
+  f.monitor.updateConfig({ ...f.monitor.baseConfig, enabled: true });
+  f.settle('好。'.repeat(80));
+  await drain();
+  assert.equal(f.cancellations.length, 1);
+  assert.equal(f.monitor.getSnapshot().agents[0].events[0].phase, 'waiting');
+});
+
+test('disable cancels queued detection but preserves in-flight goal recovery policy', async (t) => {
+  const f = await fixture(t);
+  f.settle('好。'.repeat(80));
+  f.monitor.updateConfig({ ...f.monitor.baseConfig, enabled: false });
+  await drain();
+  assert.equal(f.cancellations.length, 0);
+  f.monitor.updateConfig(f.monitor.baseConfig);
+  f.settle('好。'.repeat(80));
+  await drain();
+  assert.equal(f.goals.get(f.agent).phase, 'paused');
+  f.monitor.updateConfig({ ...f.monitor.baseConfig, enabled: false, resumeGoal: false, action: 'cancel' });
+  assert.equal(f.monitor.getSnapshot().agents[0].phase, 'waiting');
+  f.idle();
+  assert.equal(f.goals.get(f.agent).phase, 'active');
+  const row = f.monitor.getSnapshot().agents[0];
+  assert.equal(row.phase, 'disabled');
+  assert.equal(row.events[0].phase, 'resumed');
+  assert.equal(row.events[0].action, 'pause-goal');
+});
+
+test('status reports compaction failure separately from successful goal recovery', async (t) => {
+  let resolveCompact;
+  const f = await fixture(t, { autoCompact: true }, { compact() { return new Promise(resolve => { resolveCompact = resolve; }); } });
+  f.append('turn/start', { turn: 1 });
+  f.settle('好。'.repeat(80));
+  await drain();
+  f.idle();
+  assert.equal(f.monitor.getSnapshot().agents[0].phase, 'compacting');
+  f.monitor.updateConfig({ ...f.monitor.baseConfig, enabled: false, resumeGoal: false });
+  resolveCompact(null);
+  await drain();
+  const row = f.monitor.getSnapshot().agents[0];
+  assert.equal(row.events[0].phase, 'failed');
+  assert.equal(row.events[0].compaction, 'failed');
+  assert.equal(row.events[0].resumed, true);
+  assert.equal(f.goals.get(f.agent).phase, 'active');
+});
+
+test('snapshots are detached, omit reasoning text and freeze elapsed time at turn end', async (t) => {
+  const f = await fixture(t);
+  f.append('turn/start', { turn: 1 });
+  f.append('step/start', { turn: 1, step: 1 });
+  f.settle('DO-NOT-EXPOSE-PRIVATE-REASONING。');
+  f.append('turn/end', { turn: 1 });
+  const snapshot = f.monitor.getSnapshot();
+  assert.doesNotMatch(JSON.stringify(snapshot), /DO-NOT-EXPOSE/);
+  snapshot.config.enabled = false;
+  snapshot.agents[0].stats.lines = 9876;
+  await new Promise(resolve => setTimeout(resolve, 10));
+  const after = f.monitor.getSnapshot();
+  assert.equal(after.config.enabled, true);
+  assert.equal(after.agents[0].stats.lines, 1);
+  assert.equal(after.agents[0].elapsedMs, snapshot.agents[0].elapsedMs);
+});
+
+test('live threshold changes keep stream evidence and update the active time watchdog', async (t) => {
+  const f = await fixture(t, { repeatedRunLimit: 100, perBlockLimit: 1000 }, { goal: false });
+  f.append('turn/start', { turn: 1 });
+  f.emit({ type: 'start', attemptId: 'stream', turn: 1, step: 1 });
+  f.emit({ type: 'chunk', attemptId: 'stream', index: 0, chunk: { type: 'reasoning-delta', index: 0, text: '好。'.repeat(20) } });
+  f.monitor.updateConfig({ ...f.monitor.baseConfig, repeatedRunLimit: 21, action: 'cancel' });
+  f.emit({ type: 'chunk', attemptId: 'stream', index: 1, chunk: { type: 'reasoning-delta', index: 0, text: '好。' } });
+  await drain();
+  assert.equal(f.cancellations.length, 1);
+  f.monitor.updateConfig({ ...f.monitor.baseConfig, action: 'cancel', maxTurnMinutes: 0.0005 });
+  await new Promise(resolve => setTimeout(resolve, 60));
+  assert.equal(f.cancellations.length, 2);
+});
+
+test('renamed command and tool preserve their legacy aliases', async (t) => {
+  const f = await fixture(t);
+  assert.deepEqual(await f.tools.get('reasoning_monitor_status').execute(), await f.tools.get('guard_status').execute());
+  assert.deepEqual(await f.commands.get('monitor').handler({ rawInput: 'status' }), await f.commands.get('guard').handler({ rawInput: 'status' }));
 });
