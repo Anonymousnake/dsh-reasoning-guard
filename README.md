@@ -78,6 +78,8 @@ node test/audit.mjs <会话片段>  # 检查一个会话中匹配的短句
 
 `verify.mjs` 依赖当前 Node 的 Zstandard 解压能力；它只读 `~/.dsh/sessions`，回放已落盘 reasoning，冷却置零，不执行处置，也不模拟实时流和时长预算。其“触发/未触发”是规则输出，未经人工标注，不能用来声称零误报或零漏报。判定不代表对 reasoning 内容质量的通用评估。
 
+`ci/github-actions-test.yml` 是 Ubuntu/Windows 的 GitHub Actions 模板，当前不自动运行。有工作流写入权限时，可将它放到 `.github/workflows/test.yml` 启用；本次提交凭据缺少 `workflow` 权限。
+
 ## 许可
 
 MIT
